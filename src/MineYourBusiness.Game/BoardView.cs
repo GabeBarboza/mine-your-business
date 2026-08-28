@@ -1,4 +1,5 @@
 using Godot;
+using MineYourBusiness.Application;
 using MineYourBusiness.Domain;
 
 namespace MineYourBusiness;
@@ -11,6 +12,7 @@ public partial class BoardView : Control
     private const float CellSize = 92.0f;
     private readonly HashSet<BoardPosition> _validPositions = [];
     private BoardState? _board;
+    private IReadOnlyList<BoardCardView>? _publicBoard;
     private Vector2 _pan = new(75.0f, 0.0f);
     private float _zoom = 0.72f;
     private bool _panning;
@@ -27,6 +29,7 @@ public partial class BoardView : Control
     public void Display(BoardState board, CardDefinition? selectedCard)
     {
         _board = board;
+        _publicBoard = null;
         _validPositions.Clear();
         if (selectedCard?.Kind == CardKind.Path)
         {
@@ -47,10 +50,18 @@ public partial class BoardView : Control
         QueueRedraw();
     }
 
+    public void Display(IReadOnlyList<BoardCardView> board)
+    {
+        _board = null;
+        _publicBoard = board;
+        _validPositions.Clear();
+        QueueRedraw();
+    }
+
     public override void _Draw()
     {
         DrawRect(new Rect2(Vector2.Zero, Size), new Color("101923"));
-        if (_board is null)
+        if (_board is null && _publicBoard is null)
         {
             return;
         }
@@ -62,9 +73,20 @@ public partial class BoardView : Control
             DrawRect(rect, new Color("59d99b"), false, 2.0f);
         }
 
-        foreach ((BoardPosition position, PlacedCard card) in _board.Cards)
+        if (_board is not null)
         {
-            DrawCard(position, card);
+            foreach ((BoardPosition position, PlacedCard card) in _board.Cards)
+            {
+                DrawCard(position, card.Definition.Edges, card.IsStart, card.IsGoal, card.IsRevealed, card.Goal);
+            }
+        }
+
+        if (_publicBoard is not null)
+        {
+            foreach (BoardCardView card in _publicBoard)
+            {
+                DrawCard(card.Position, card.Edges, card.IsStart, card.IsGoal, card.IsRevealed, card.RevealedGoal);
+            }
         }
     }
 
@@ -110,22 +132,28 @@ public partial class BoardView : Control
         }
     }
 
-    private void DrawCard(BoardPosition position, PlacedCard card)
+    private void DrawCard(
+        BoardPosition position,
+        EdgeMask edges,
+        bool isStart,
+        bool isGoal,
+        bool isRevealed,
+        GoalContent goal)
     {
         Rect2 rect = CardRect(position);
-        Color fill = card.IsStart
+        Color fill = isStart
             ? new Color("39735c")
-            : card.IsGoal && !card.IsRevealed
+            : isGoal && !isRevealed
                 ? new Color("473a58")
-                : card.Goal == GoalContent.Gold
+                : goal == GoalContent.Gold
                     ? new Color("d5a62e")
-                    : card.Goal == GoalContent.Stone
+                    : goal == GoalContent.Stone
                         ? new Color("6d7078")
                         : new Color("c5a56b");
         DrawStyleBox(MakeCardStyle(fill), rect);
 
         Vector2 center = rect.GetCenter();
-        if (card.IsGoal && !card.IsRevealed)
+        if (isGoal && !isRevealed)
         {
             Vector2[] diamond =
             [
@@ -139,15 +167,15 @@ public partial class BoardView : Control
             return;
         }
 
-        if (card.Goal == GoalContent.Gold)
+        if (goal == GoalContent.Gold)
         {
             DrawCircle(center, 17.0f * _zoom, new Color("ffe176"));
             DrawCircle(center, 9.0f * _zoom, new Color("d99b23"));
             return;
         }
 
-        DrawTunnels(rect, card.Definition.Edges);
-        if (card.IsStart)
+        DrawTunnels(rect, edges);
+        if (isStart)
         {
             DrawCircle(center, 8.0f * _zoom, new Color("d8f2c4"));
         }

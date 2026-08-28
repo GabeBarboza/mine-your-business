@@ -4,7 +4,7 @@ using MineYourBusiness.Domain;
 
 namespace MineYourBusiness;
 
-/// <summary>Composition root and local vertical slice for milestone 2.</summary>
+/// <summary>Composition root for local debug play and private ENet rooms.</summary>
 public partial class Bootstrap : Control
 {
     private readonly Color _ink = new("e9edf2");
@@ -24,11 +24,17 @@ public partial class Bootstrap : Control
     private VBoxContainer? _publicLog;
     private Control? _overlay;
     private CardDefinition? _selectedCard;
+    private OnlineSessionNode? _online;
+    private Label? _onlineStatus;
 
     public override void _Ready()
     {
+        _online = new OnlineSessionNode { Name = "OnlineSession" };
+        _online.SnapshotChanged += OnOnlineSnapshot;
+        _online.StatusChanged += OnOnlineStatus;
+        AddChild(_online);
         BuildStartScreen();
-        GD.Print($"{ProjectMetadata.DisplayName} milestone 2 vertical slice started.");
+        GD.Print($"{ProjectMetadata.DisplayName} milestone 3 private multiplayer started.");
     }
 
     private void BuildStartScreen()
@@ -45,7 +51,7 @@ public partial class Bootstrap : Control
         panel.AddChild(content);
         content.AddChild(Heading(ProjectMetadata.DisplayName, 38, _accent));
         content.AddChild(LabelText(ProjectMetadata.Tagline, 18, _muted));
-        content.AddChild(LabelText("PARTIDA LOCAL · VERTICAL SLICE", 13, new Color("67d5a4")));
+        content.AddChild(LabelText("MULTIPLAYER PRIVADO · MARCO 3", 13, new Color("67d5a4")));
         content.AddChild(Spacer(10));
         content.AddChild(LabelText("Três pessoas compartilham esta instância. A barreira de privacidade protege papel, mão e mapas entre turnos.", 15, _ink, true));
 
@@ -59,10 +65,307 @@ public partial class Bootstrap : Control
 
         SpinBox seed = new() { MinValue = 1, MaxValue = 999999999, Value = 20260828, Prefix = "Seed  " };
         content.AddChild(seed);
-        Button start = PrimaryButton("INICIAR PARTIDA");
+        Button start = PrimaryButton("INICIAR PARTIDA LOCAL");
         start.Pressed += () => StartMatch(names.Select(field => field.Text), (long)seed.Value);
         content.AddChild(start);
+        Button online = SecondaryButton("CRIAR OU ENTRAR EM SALA ONLINE");
+        online.Pressed += BuildOnlineMenu;
+        content.AddChild(online);
         content.AddChild(LabelText("Clique para escolher · roda para zoom · botão do meio para mover a mesa", 12, _muted, true));
+    }
+
+    private void BuildOnlineMenu()
+    {
+        ClearScreen();
+        AddChild(FullBackground(new Color("0c1118")));
+        CenterContainer center = new();
+        center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(center);
+        PanelContainer panel = Panel(new Color("151f2b"), 26);
+        panel.CustomMinimumSize = new(560, 0);
+        center.AddChild(panel);
+        VBoxContainer content = VBox(11);
+        panel.AddChild(content);
+        content.AddChild(Heading("SALA PRIVADA", 30, _accent));
+        content.AddChild(LabelText("O anfitrião é autoritativo. Em redes diferentes, encaminhe a porta UDP escolhida no roteador do anfitrião.", 13, _muted, true));
+
+        LineEdit name = new() { Text = "Ana", PlaceholderText = "Seu nome" };
+        LineEdit address = new() { Text = "127.0.0.1", PlaceholderText = "Endereço do anfitrião" };
+        LineEdit code = new() { PlaceholderText = "Código da sala" };
+        SpinBox port = new() { MinValue = 1024, MaxValue = 65535, Value = 24828, Prefix = "Porta UDP  " };
+        SpinBox seed = new() { MinValue = 1, MaxValue = 999999999, Value = 20260828, Prefix = "Seed  " };
+        content.AddChild(name);
+        content.AddChild(address);
+        content.AddChild(code);
+        content.AddChild(port);
+        content.AddChild(seed);
+
+        HBoxContainer actions = HBox(8);
+        Button host = PrimaryButton("CRIAR SALA");
+        host.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        host.Pressed += () =>
+        {
+            Error error = _online!.Host(name.Text, (int)port.Value, (long)seed.Value);
+            if (error != Error.Ok)
+            {
+                OnOnlineStatus($"Não foi possível abrir a sala: {error}.", true);
+            }
+        };
+        actions.AddChild(host);
+        Button join = PrimaryButton("ENTRAR");
+        join.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        join.Pressed += () =>
+        {
+            Error error = _online!.Join(address.Text, (int)port.Value, code.Text, name.Text);
+            if (error != Error.Ok)
+            {
+                OnOnlineStatus($"Não foi possível iniciar a conexão: {error}.", true);
+            }
+        };
+        actions.AddChild(join);
+        content.AddChild(actions);
+        Button back = SecondaryButton("VOLTAR");
+        back.Pressed += BuildStartScreen;
+        content.AddChild(back);
+        _onlineStatus = LabelText("Informe os dados da sala.", 12, _muted, true);
+        content.AddChild(_onlineStatus);
+    }
+
+    private void OnOnlineSnapshot(PlayerSnapshot snapshot)
+    {
+        if (snapshot.Public.RoomPhase == RoomPhase.Lobby)
+        {
+            BuildOnlineLobby(snapshot);
+        }
+        else
+        {
+            BuildOnlineMatch(snapshot);
+        }
+    }
+
+    private void BuildOnlineLobby(PlayerSnapshot snapshot)
+    {
+        ClearScreen();
+        AddChild(FullBackground(new Color("0c1118")));
+        CenterContainer center = new();
+        center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(center);
+        PanelContainer panel = Panel(new Color("151f2b"), 26);
+        panel.CustomMinimumSize = new(600, 0);
+        center.AddChild(panel);
+        VBoxContainer content = VBox(11);
+        panel.AddChild(content);
+        content.AddChild(Heading("SALA " + (_online?.IsHost == true ? _online.Snapshot!.Public.MatchId[..6].ToUpperInvariant() : "PRIVADA"), 28, _accent));
+        if (_online?.IsHost == true)
+        {
+            content.AddChild(LabelText("Código de convite: " + _online.RoomCode, 18, new Color("72dda9")));
+        }
+
+        content.AddChild(LabelText("Compartilhe endereço público, porta UDP e código apenas com as pessoas convidadas.", 12, _muted, true));
+        foreach (RoomPlayerView player in snapshot.Public.Players)
+        {
+            string state = player.IsConnected ? (player.IsReady ? "PRONTO" : "AGUARDANDO") : "DESCONECTADO";
+            content.AddChild(LabelText($"{(player.IsHost ? "★" : "•")} {player.Name} — {state}", 15, player.IsReady ? new Color("72dda9") : _ink));
+        }
+
+        RoomPlayerView me = snapshot.Public.Players.Single(player => player.Id == snapshot.Private.PlayerId);
+        if (!me.IsHost)
+        {
+            Button ready = PrimaryButton(me.IsReady ? "CANCELAR PRONTIDÃO" : "ESTOU PRONTO");
+            ready.Pressed += () => _online!.SetReady(!me.IsReady);
+            content.AddChild(ready);
+        }
+        else
+        {
+            Button start = PrimaryButton("INICIAR PARTIDA");
+            start.Disabled = snapshot.Public.Players.Count is < 3 or > 10 || snapshot.Public.Players.Any(player => !player.IsReady || !player.IsConnected);
+            start.Pressed += () => _online!.StartMatch();
+            content.AddChild(start);
+        }
+
+        Button reconnect = SecondaryButton("RECONECTAR");
+        reconnect.Visible = !_online!.IsHost;
+        reconnect.Pressed += () => _online.Reconnect();
+        content.AddChild(reconnect);
+        Button leave = SecondaryButton("SAIR DA SALA");
+        leave.Pressed += () =>
+        {
+            _online.Close();
+            BuildStartScreen();
+        };
+        content.AddChild(leave);
+        _onlineStatus = LabelText(snapshot.Public.StatusMessage ?? "Aguardando participantes…", 12, _muted, true);
+        content.AddChild(_onlineStatus);
+    }
+
+    private void BuildOnlineMatch(PlayerSnapshot snapshot)
+    {
+        SpinBox positionX = new() { MinValue = -99, MaxValue = 99, Value = 1, Prefix = "X " };
+        SpinBox positionY = new() { MinValue = -99, MaxValue = 99, Value = 0, Prefix = "Y " };
+        ClearScreen();
+        AddChild(FullBackground(new Color("0b1118")));
+        MarginContainer margin = new();
+        margin.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        margin.AddThemeConstantOverride("margin_left", 28);
+        margin.AddThemeConstantOverride("margin_top", 22);
+        margin.AddThemeConstantOverride("margin_right", 28);
+        margin.AddThemeConstantOverride("margin_bottom", 22);
+        AddChild(margin);
+        HBoxContainer shell = HBox(14);
+        margin.AddChild(shell);
+
+        PanelContainer publicPanel = Panel(new Color("131d28"), 18);
+        publicPanel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        VBoxContainer publicContent = VBox(9);
+        publicPanel.AddChild(publicContent);
+        publicContent.AddChild(Heading("PARTIDA ONLINE", 25, _accent));
+        publicContent.AddChild(LabelText(
+            snapshot.Public.RoomPhase == RoomPhase.Paused
+                ? "PARTIDA PAUSADA PARA RECONEXÃO"
+                : snapshot.Public.RoomPhase == RoomPhase.Aborted
+                    ? "PARTIDA ENCERRADA"
+                    : $"Rodada {snapshot.Public.RoundNumber}/3 · turno {snapshot.Public.TurnNumber}",
+            14,
+            snapshot.Public.RoomPhase == RoomPhase.Playing ? new Color("72dda9") : new Color("ef806f")));
+        foreach (RoomPlayerView player in snapshot.Public.Players)
+        {
+            bool current = player.Id == snapshot.Public.CurrentPlayerId;
+            string finalScore = player.RevealedGold is int gold
+                ? $" · {gold} pepitas · {player.RevealedRole}"
+                : string.Empty;
+            publicContent.AddChild(LabelText($"{(current ? "▶" : "•")} {player.Name} · mão {player.CardCount} · {ToolLabel(player.BrokenTools)}{finalScore}{(player.IsConnected ? "" : " · OFFLINE")}", 14, current ? new Color("72dda9") : _ink, true));
+        }
+
+        BoardView onlineBoard = new()
+        {
+            CustomMinimumSize = new(620, 330),
+            PositionSelected = position =>
+            {
+                positionX.Value = position.X;
+                positionY.Value = position.Y;
+            },
+        };
+        onlineBoard.Display(snapshot.Public.Board);
+        publicContent.AddChild(onlineBoard);
+        publicContent.AddChild(Spacer(8));
+        publicContent.AddChild(LabelText($"Mesa: {snapshot.Public.Board.Count} cartas · compra {snapshot.Public.DrawPileCount} · descarte {snapshot.Public.DiscardPileCount}", 13, _muted));
+        if (snapshot.Public.StatusMessage is not null)
+        {
+            publicContent.AddChild(LabelText(snapshot.Public.StatusMessage, 13, new Color("ef806f"), true));
+        }
+
+        Button reconnect = SecondaryButton("RECONECTAR");
+        reconnect.Visible = !_online!.IsHost;
+        reconnect.Pressed += () => _online.Reconnect();
+        publicContent.AddChild(reconnect);
+        shell.AddChild(publicPanel);
+
+        PanelContainer privatePanel = Panel(new Color("192531"), 18);
+        privatePanel.CustomMinimumSize = new(380, 0);
+        VBoxContainer privateContent = VBox(9);
+        privatePanel.AddChild(privateContent);
+        privateContent.AddChild(Heading("SUAS INFORMAÇÕES", 18, _accent));
+        privateContent.AddChild(LabelText("Papel: " + (snapshot.Private.Role?.ToString() ?? "aguardando"), 16, _ink));
+        if (snapshot.Private.Gold is int privateGold)
+        {
+            privateContent.AddChild(LabelText($"Placar final: {privateGold} pepitas", 16, new Color("72dda9")));
+        }
+        foreach (GoalInspectionView goal in snapshot.Private.InspectedGoals)
+        {
+            privateContent.AddChild(LabelText($"Mapa ({goal.Position.X}, {goal.Position.Y}): {GoalName(goal.Content)}", 12, _muted));
+        }
+
+        bool myTurn = snapshot.Public.RoomPhase == RoomPhase.Playing && snapshot.Public.CurrentPlayerId == snapshot.Private.PlayerId;
+        privateContent.AddChild(LabelText(myTurn ? "É A SUA VEZ" : "Aguardando sua vez", 14, myTurn ? new Color("72dda9") : _muted));
+        HBoxContainer destination = HBox(5);
+        OptionButton target = new() { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        foreach (RoomPlayerView player in snapshot.Public.Players)
+        {
+            target.AddItem(player.Name);
+        }
+
+        OptionButton tool = new();
+        foreach (ToolType item in new[] { ToolType.Lamp, ToolType.Cart, ToolType.Pickaxe })
+        {
+            tool.AddItem(ToolName(item));
+            tool.SetItemMetadata(tool.ItemCount - 1, (int)item);
+        }
+
+        destination.AddChild(positionX);
+        destination.AddChild(positionY);
+        destination.AddChild(target);
+        destination.AddChild(tool);
+        privateContent.AddChild(destination);
+        privateContent.AddChild(LabelText("X/Y para mesa · jogador/ferramenta para ações", 11, _muted));
+        ScrollContainer handScroll = new() { SizeFlagsVertical = SizeFlags.ExpandFill };
+        VBoxContainer hand = VBox(6);
+        handScroll.AddChild(hand);
+        privateContent.AddChild(handScroll);
+        foreach (CardDefinition card in snapshot.Private.Hand)
+        {
+            HBoxContainer cardActions = HBox(5);
+            Button play = SecondaryButton("JOGAR · " + CardName(card).Replace('\n', ' '));
+            play.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            play.Disabled = !myTurn;
+            play.Pressed += () =>
+            {
+                RoomPlayerView selectedTarget = snapshot.Public.Players[target.Selected];
+                ToolType selectedTool = (ToolType)(int)tool.GetItemMetadata(tool.Selected);
+                GameCommand command = card.Kind switch
+                {
+                    CardKind.Path => new PlayPathCommand(snapshot.Private.PlayerId, card.Id, new((int)positionX.Value, (int)positionY.Value)),
+                    CardKind.BreakTool => new BreakToolCommand(snapshot.Private.PlayerId, card.Id, selectedTarget.Id),
+                    CardKind.RepairTool => new RepairToolCommand(snapshot.Private.PlayerId, card.Id, selectedTarget.Id, selectedTool),
+                    CardKind.Collapse => new CollapsePathCommand(snapshot.Private.PlayerId, card.Id, new((int)positionX.Value, (int)positionY.Value)),
+                    CardKind.Map => new InspectGoalCommand(snapshot.Private.PlayerId, card.Id, new((int)positionX.Value, (int)positionY.Value)),
+                    _ => throw new InvalidOperationException("Tipo de carta online desconhecido."),
+                };
+                _online.Submit(command);
+            };
+            cardActions.AddChild(play);
+            Button discard = SecondaryButton("DESCARTAR");
+            discard.Disabled = !myTurn;
+            discard.Pressed += () => _online.Submit(new DiscardCommand(snapshot.Private.PlayerId, card.Id));
+            cardActions.AddChild(discard);
+            hand.AddChild(cardActions);
+        }
+
+        if (snapshot.Private.Hand.Count == 0)
+        {
+            Button pass = PrimaryButton("PASSAR");
+            pass.Disabled = !myTurn;
+            pass.Pressed += () => _online.Submit(new PassCommand(snapshot.Private.PlayerId));
+            hand.AddChild(pass);
+        }
+
+        if (snapshot.Public.RoomPhase is RoomPhase.Finished or RoomPhase.Aborted)
+        {
+            Button leave = PrimaryButton("VOLTAR AO MENU");
+            leave.Pressed += () =>
+            {
+                _online.Close();
+                BuildStartScreen();
+            };
+            privateContent.AddChild(leave);
+        }
+
+        _onlineStatus = LabelText("Cada cliente recebe somente seu papel, sua mão e seus mapas.", 11, _muted, true);
+        privateContent.AddChild(_onlineStatus);
+        shell.AddChild(privatePanel);
+    }
+
+    private void OnOnlineStatus(string message, bool isError)
+    {
+        if (_onlineStatus is not null)
+        {
+            _onlineStatus.Text = message;
+            _onlineStatus.Modulate = isError ? new Color("ef806f") : _muted;
+        }
+
+        if (isError)
+        {
+            GD.PushWarning(message);
+        }
     }
 
     private void StartMatch(IEnumerable<string> names, long seed)
@@ -646,6 +949,11 @@ public partial class Bootstrap : Control
         _overlay = null;
         foreach (Node child in GetChildren())
         {
+            if (child == _online)
+            {
+                continue;
+            }
+
             RemoveChild(child);
             child.QueueFree();
         }
