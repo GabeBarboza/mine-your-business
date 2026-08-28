@@ -41,6 +41,7 @@ public sealed record GoalRevealed(BoardPosition Position, GoalContent Content) :
 public sealed record CardDrawn(PlayerId PlayerId, CardId CardId) : GameEvent;
 public sealed record TurnAdvanced(int TurnNumber, PlayerId PlayerId) : GameEvent;
 public sealed record GoldAwarded(PlayerId PlayerId, int Amount) : GameEvent;
+public sealed record RoleRevealed(PlayerId PlayerId, PlayerRole Role) : GameEvent;
 public sealed record RoundEnded(int RoundNumber, bool GoldReached) : GameEvent;
 public sealed record MatchEnded(IReadOnlyList<PlayerId> Winners) : GameEvent;
 

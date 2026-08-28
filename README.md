@@ -4,7 +4,7 @@
 
 Jogo de estrategia, caminhos e papeis secretos para desktop, desenvolvido com Godot 4.7.2 .NET e C#.
 
-O projeto concluiu o motor de regras do Marco 1. A identidade, os textos e os assets finais serao originais; o manual de Saboteur e usado apenas como referencia de regras e comportamento.
+O projeto concluiu o vertical slice local do Marco 2. A identidade, os textos e os assets finais serao originais; o manual de Saboteur e usado apenas como referencia de regras e comportamento.
 
 ## Requisitos
 
@@ -17,6 +17,10 @@ O projeto concluiu o motor de regras do Marco 1. A identidade, os textos e os as
 1. Abra `project.godot` no editor Godot 4.7.2 .NET.
 2. Aguarde a restauracao e compilacao do projeto C#.
 3. Pressione F6 para executar a cena atual ou F5 para executar o projeto.
+
+Na tela inicial, informe os nomes das tres pessoas e a seed. Cada turno comeca com uma barreira de privacidade antes de revelar papel, mao e informacoes de mapa. A mesa aceita clique, zoom pela roda e pan com o botao do meio.
+
+Os controles `JOGADA AUTO`, `FIM DA RODADA` e `PLACAR FINAL` sao atalhos administrativos de depuracao para validar o fluxo completo sem depender de uma sequencia manual longa.
 
 Pela linha de comando:
 
@@ -42,6 +46,7 @@ $env:GODOT_BIN = "C:\caminho\para\Godot_v4.7.2-stable_mono_win64.exe"
 ## Estrutura
 
 - `src/MineYourBusiness.Domain`: regras e modelos C# puros, sem dependencia do Godot.
+- `src/MineYourBusiness.Application`: coordenacao testavel da partida local e controles administrativos.
 - `src/MineYourBusiness.Simulator`: partida automatizada e log textual do dominio.
 - `src/MineYourBusiness.Game`: composicao e apresentacao do cliente Godot.
 - `scenes`: cenas e componentes visuais.
@@ -50,3 +55,4 @@ $env:GODOT_BIN = "C:\caminho\para\Godot_v4.7.2-stable_mono_win64.exe"
 - `scripts`: verificacoes reproduziveis para desenvolvimento e CI.
 
 Veja o [plano de desenvolvimento](docs/PLANO_DE_DESENVOLVIMENTO.md) para o escopo e os marcos.
+O escopo entregue e o roteiro de validacao do vertical slice estao em [docs/MARCO_2_VERTICAL_SLICE.md](docs/MARCO_2_VERTICAL_SLICE.md).

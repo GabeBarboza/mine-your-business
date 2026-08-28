@@ -14,5 +14,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/MineYourBusiness.Domain/MineYourBusiness.Domain.csproj" />
+    <ProjectReference Include="../../src/MineYourBusiness.Application/MineYourBusiness.Application.csproj" />
   </ItemGroup>
 </Project>

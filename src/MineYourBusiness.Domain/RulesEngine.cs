@@ -253,6 +253,11 @@ public static class RulesEngine
             events.Add(new GoldAwarded(playerId, amount));
         }
 
+        foreach (PlayerState player in state.Players)
+        {
+            events.Add(new RoleRevealed(player.Id, player.Role));
+        }
+
         state.Phase = MatchPhase.RoundSummary;
         events.Add(new RoundEnded(state.RoundNumber, state.GoldWasReached));
 
