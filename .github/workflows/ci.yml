@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Restore
+        run: dotnet restore MineYourBusiness.sln
+
+      - name: Build
+        run: dotnet build MineYourBusiness.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --project tests/MineYourBusiness.Domain.Tests/MineYourBusiness.Domain.Tests.csproj --configuration Release --no-build --no-restore
+
+      - name: Verify formatting
+        run: dotnet format MineYourBusiness.sln --verify-no-changes --no-restore

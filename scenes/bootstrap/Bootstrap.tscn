@@ -1,0 +1,64 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/MineYourBusiness.Game/Bootstrap.cs" id="1_bootstrap"]
+
+[node name="Bootstrap" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_bootstrap")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.047, 0.059, 0.075, 1)
+mouse_filter = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 48
+theme_override_constants/margin_top = 48
+theme_override_constants/margin_right = 48
+theme_override_constants/margin_bottom = 48
+
+[node name="Content" type="VBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="Title" type="Label" parent="MarginContainer/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93, 0.78, 0.31, 1)
+theme_override_font_sizes/font_size = 42
+text = "MINE YOUR BUSINESS"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="MarginContainer/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.81, 0.86, 1)
+theme_override_constants/line_spacing = 8
+theme_override_font_sizes/font_size = 20
+text = "Just do your job. Probably."
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="MarginContainer/Content"]
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+
+[node name="Status" type="Label" parent="MarginContainer/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.73, 0.64, 1)
+theme_override_font_sizes/font_size = 16
+text = "Carregando fundação..."
+horizontal_alignment = 1

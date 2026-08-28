@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MineYourBusiness.Domain</RootNamespace>
+    <AssemblyName>MineYourBusiness.Domain</AssemblyName>
+  </PropertyGroup>
+</Project>
