@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MineYourBusiness.Domain", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MineYourBusiness.Domain.Tests", "tests\MineYourBusiness.Domain.Tests\MineYourBusiness.Domain.Tests.csproj", "{CE738D16-39D5-4B5F-81DB-A4020B7649E2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MineYourBusiness.Simulator", "src\MineYourBusiness.Simulator\MineYourBusiness.Simulator.csproj", "{8CFF26C7-927B-40AC-B59C-1477D70C303A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -26,5 +28,9 @@ Global
 		{CE738D16-39D5-4B5F-81DB-A4020B7649E2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CE738D16-39D5-4B5F-81DB-A4020B7649E2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CE738D16-39D5-4B5F-81DB-A4020B7649E2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8CFF26C7-927B-40AC-B59C-1477D70C303A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8CFF26C7-927B-40AC-B59C-1477D70C303A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8CFF26C7-927B-40AC-B59C-1477D70C303A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8CFF26C7-927B-40AC-B59C-1477D70C303A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
