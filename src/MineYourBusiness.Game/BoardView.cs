@@ -7,227 +7,287 @@ namespace MineYourBusiness;
 /// <summary>Expandable local board with mouse pan, zoom and coordinate selection.</summary>
 public partial class BoardView : Control
 {
-    private const float CardWidth = 64.0f;
-    private const float CardHeight = 84.0f;
-    private const float CellSize = 92.0f;
-    private readonly HashSet<BoardPosition> _validPositions = [];
-    private BoardState? _board;
-    private IReadOnlyList<BoardCardView>? _publicBoard;
-    private Vector2 _pan = new(75.0f, 0.0f);
-    private float _zoom = 0.72f;
-    private bool _panning;
+	private const float CardWidth = 64.0f;
+	private const float CardHeight = 84.0f;
+	private const float CellSize = 92.0f;
+	private readonly HashSet<BoardPosition> _validPositions = [];
+	private BoardState? _board;
+	private IReadOnlyList<BoardCardView>? _publicBoard;
+	private Vector2 _pan = new(75.0f, 0.0f);
+	private float _zoom = 0.72f;
+	private bool _panning;
+	private BoardPosition _keyboardPosition = new(1, 0);
 
-    public BoardView()
-    {
-        CustomMinimumSize = new(620.0f, 390.0f);
-        MouseDefaultCursorShape = CursorShape.Cross;
-        ClipContents = true;
-    }
+	public BoardView()
+	{
+		CustomMinimumSize = new(620.0f, 350.0f);
+		MouseDefaultCursorShape = CursorShape.Cross;
+		ClipContents = true;
+		FocusMode = FocusModeEnum.All;
+		TooltipText = "Mesa: setas movem o cursor, Enter confirma, +/− aplica zoom e F recentraliza.";
+		FocusEntered += QueueRedraw;
+		FocusExited += QueueRedraw;
+	}
 
-    public Action<BoardPosition>? PositionSelected { get; set; }
+	public Action<BoardPosition>? PositionSelected { get; set; }
 
-    public void Display(BoardState board, CardDefinition? selectedCard)
-    {
-        _board = board;
-        _publicBoard = null;
-        _validPositions.Clear();
-        if (selectedCard?.Kind == CardKind.Path)
-        {
-            foreach (BoardPosition occupied in board.Cards.Keys)
-            {
-                foreach (Direction direction in Enum.GetValues<Direction>())
-                {
-                    BoardPosition candidate = occupied.Move(direction);
-                    if (!board.Cards.ContainsKey(candidate) &&
-                        board.ValidatePlacement(candidate, selectedCard).IsValid)
-                    {
-                        _validPositions.Add(candidate);
-                    }
-                }
-            }
-        }
+	public bool HighContrast { get; set; }
 
-        QueueRedraw();
-    }
+	public void Display(BoardState board, CardDefinition? selectedCard)
+	{
+		_board = board;
+		_publicBoard = null;
+		_validPositions.Clear();
+		if (selectedCard?.Kind == CardKind.Path)
+		{
+			foreach (BoardPosition occupied in board.Cards.Keys)
+			{
+				foreach (Direction direction in Enum.GetValues<Direction>())
+				{
+					BoardPosition candidate = occupied.Move(direction);
+					if (!board.Cards.ContainsKey(candidate) &&
+						board.ValidatePlacement(candidate, selectedCard).IsValid)
+					{
+						_validPositions.Add(candidate);
+					}
+				}
+			}
+		}
 
-    public void Display(IReadOnlyList<BoardCardView> board)
-    {
-        _board = null;
-        _publicBoard = board;
-        _validPositions.Clear();
-        QueueRedraw();
-    }
+		QueueRedraw();
+	}
 
-    public override void _Draw()
-    {
-        DrawRect(new Rect2(Vector2.Zero, Size), new Color("101923"));
-        if (_board is null && _publicBoard is null)
-        {
-            return;
-        }
+	public void Display(IReadOnlyList<BoardCardView> board)
+	{
+		_board = null;
+		_publicBoard = board;
+		_validPositions.Clear();
+		QueueRedraw();
+	}
 
-        foreach (BoardPosition position in _validPositions)
-        {
-            Rect2 rect = CardRect(position).Grow(4.0f * _zoom);
-            DrawRect(rect, new Color(0.26f, 0.78f, 0.53f, 0.22f), true);
-            DrawRect(rect, new Color("59d99b"), false, 2.0f);
-        }
+	public override void _Draw()
+	{
+		DrawRect(new Rect2(Vector2.Zero, Size), new Color("101923"));
+		if (_board is null && _publicBoard is null)
+		{
+			return;
+		}
 
-        if (_board is not null)
-        {
-            foreach ((BoardPosition position, PlacedCard card) in _board.Cards)
-            {
-                DrawCard(position, card.Definition.Edges, card.IsStart, card.IsGoal, card.IsRevealed, card.Goal);
-            }
-        }
+		foreach (BoardPosition position in _validPositions)
+		{
+			Rect2 rect = CardRect(position).Grow(4.0f * _zoom);
+			Color valid = HighContrast ? new Color("00f0ff") : new Color("59d99b");
+			DrawRect(rect, new Color(valid, 0.22f), true);
+			DrawRect(rect, valid, false, HighContrast ? 3.0f : 2.0f);
+			DrawCircle(rect.GetCenter(), 4.0f * _zoom, valid);
+		}
 
-        if (_publicBoard is not null)
-        {
-            foreach (BoardCardView card in _publicBoard)
-            {
-                DrawCard(card.Position, card.Edges, card.IsStart, card.IsGoal, card.IsRevealed, card.RevealedGoal);
-            }
-        }
-    }
+		if (_board is not null)
+		{
+			foreach ((BoardPosition position, PlacedCard card) in _board.Cards)
+			{
+				DrawCard(position, card.Definition.Edges, card.IsStart, card.IsGoal, card.IsRevealed, card.Goal);
+			}
+		}
 
-    public override void _GuiInput(InputEvent @event)
-    {
-        if (@event is InputEventMouseButton wheel && wheel.Pressed &&
-            wheel.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
-        {
-            float previous = _zoom;
-            _zoom = Mathf.Clamp(
-                _zoom + (wheel.ButtonIndex == MouseButton.WheelUp ? 0.08f : -0.08f),
-                0.45f,
-                1.35f);
-            Vector2 anchor = wheel.Position - BoardOrigin();
-            _pan -= anchor * ((_zoom / previous) - 1.0f);
-            QueueRedraw();
-            AcceptEvent();
-            return;
-        }
+		if (_publicBoard is not null)
+		{
+			foreach (BoardCardView card in _publicBoard)
+			{
+				DrawCard(card.Position, card.Edges, card.IsStart, card.IsGoal, card.IsRevealed, card.RevealedGoal);
+			}
+		}
 
-        if (@event is InputEventMouseButton middle && middle.ButtonIndex == MouseButton.Middle)
-        {
-            _panning = middle.Pressed;
-            MouseDefaultCursorShape = _panning ? CursorShape.Drag : CursorShape.Cross;
-            AcceptEvent();
-            return;
-        }
+		if (HasFocus())
+		{
+			Rect2 cursor = CardRect(_keyboardPosition).Grow(7.0f * _zoom);
+			DrawRect(cursor, HighContrast ? Colors.White : new Color("e2b84b"), false, 3.0f);
+		}
+	}
 
-        if (@event is InputEventMouseMotion motion && _panning)
-        {
-            _pan += motion.Relative;
-            QueueRedraw();
-            AcceptEvent();
-            return;
-        }
+	public override void _GuiInput(InputEvent @event)
+	{
+		if (@event is InputEventKey key && key.Pressed && !key.Echo)
+		{
+			bool handled = true;
+			switch (key.Keycode)
+			{
+				case Key.Up:
+					_keyboardPosition = _keyboardPosition.Move(Direction.North);
+					break;
+				case Key.Right:
+					_keyboardPosition = _keyboardPosition.Move(Direction.East);
+					break;
+				case Key.Down:
+					_keyboardPosition = _keyboardPosition.Move(Direction.South);
+					break;
+				case Key.Left:
+					_keyboardPosition = _keyboardPosition.Move(Direction.West);
+					break;
+				case Key.Enter:
+					PositionSelected?.Invoke(_keyboardPosition);
+					break;
+				case Key.Equal:
+				case Key.Plus:
+					_zoom = Mathf.Clamp(_zoom + 0.08f, 0.45f, 1.35f);
+					break;
+				case Key.Minus:
+					_zoom = Mathf.Clamp(_zoom - 0.08f, 0.45f, 1.35f);
+					break;
+				case Key.F:
+					_pan = new Vector2(75.0f, 0.0f);
+					_zoom = 0.72f;
+					_keyboardPosition = new BoardPosition(1, 0);
+					break;
+				default:
+					handled = false;
+					break;
+			}
 
-        if (@event is InputEventMouseButton left && left.ButtonIndex == MouseButton.Left && left.Pressed)
-        {
-            Vector2 local = (left.Position - BoardOrigin()) / (CellSize * _zoom);
-            BoardPosition position = new(Mathf.RoundToInt(local.X), Mathf.RoundToInt(local.Y));
-            PositionSelected?.Invoke(position);
-            AcceptEvent();
-        }
-    }
+			if (handled)
+			{
+				QueueRedraw();
+				AcceptEvent();
+				return;
+			}
+		}
 
-    private void DrawCard(
-        BoardPosition position,
-        EdgeMask edges,
-        bool isStart,
-        bool isGoal,
-        bool isRevealed,
-        GoalContent goal)
-    {
-        Rect2 rect = CardRect(position);
-        Color fill = isStart
-            ? new Color("39735c")
-            : isGoal && !isRevealed
-                ? new Color("473a58")
-                : goal == GoalContent.Gold
-                    ? new Color("d5a62e")
-                    : goal == GoalContent.Stone
-                        ? new Color("6d7078")
-                        : new Color("c5a56b");
-        DrawStyleBox(MakeCardStyle(fill), rect);
+		if (@event is InputEventMouseButton wheel && wheel.Pressed &&
+			wheel.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
+		{
+			float previous = _zoom;
+			_zoom = Mathf.Clamp(
+				_zoom + (wheel.ButtonIndex == MouseButton.WheelUp ? 0.08f : -0.08f),
+				0.45f,
+				1.35f);
+			Vector2 anchor = wheel.Position - BoardOrigin();
+			_pan -= anchor * ((_zoom / previous) - 1.0f);
+			QueueRedraw();
+			AcceptEvent();
+			return;
+		}
 
-        Vector2 center = rect.GetCenter();
-        if (isGoal && !isRevealed)
-        {
-            Vector2[] diamond =
-            [
-                center + new Vector2(0, -18) * _zoom,
-                center + new Vector2(15, 0) * _zoom,
-                center + new Vector2(0, 18) * _zoom,
-                center + new Vector2(-15, 0) * _zoom,
-            ];
-            DrawColoredPolygon(diamond, new Color("b8a4ce"));
-            DrawCircle(center, 4.0f * _zoom, new Color("473a58"));
-            return;
-        }
+		if (@event is InputEventMouseButton middle && middle.ButtonIndex == MouseButton.Middle)
+		{
+			_panning = middle.Pressed;
+			MouseDefaultCursorShape = _panning ? CursorShape.Drag : CursorShape.Cross;
+			AcceptEvent();
+			return;
+		}
 
-        if (goal == GoalContent.Gold)
-        {
-            DrawCircle(center, 17.0f * _zoom, new Color("ffe176"));
-            DrawCircle(center, 9.0f * _zoom, new Color("d99b23"));
-            return;
-        }
+		if (@event is InputEventMouseMotion motion && _panning)
+		{
+			_pan += motion.Relative;
+			QueueRedraw();
+			AcceptEvent();
+			return;
+		}
 
-        DrawTunnels(rect, edges);
-        if (isStart)
-        {
-            DrawCircle(center, 8.0f * _zoom, new Color("d8f2c4"));
-        }
-    }
+		if (@event is InputEventMouseButton left && left.ButtonIndex == MouseButton.Left && left.Pressed)
+		{
+			Vector2 local = (left.Position - BoardOrigin()) / (CellSize * _zoom);
+			BoardPosition position = new(Mathf.RoundToInt(local.X), Mathf.RoundToInt(local.Y));
+			PositionSelected?.Invoke(position);
+			AcceptEvent();
+		}
+	}
 
-    private void DrawTunnels(Rect2 rect, EdgeMask edges)
-    {
-        Vector2 center = rect.GetCenter();
-        float width = 13.0f * _zoom;
-        Color shadow = new("4a3827");
-        foreach (Direction direction in Enum.GetValues<Direction>())
-        {
-            if (!edges.IsOpen(direction))
-            {
-                continue;
-            }
+	private void DrawCard(
+		BoardPosition position,
+		EdgeMask edges,
+		bool isStart,
+		bool isGoal,
+		bool isRevealed,
+		GoalContent goal)
+	{
+		Rect2 rect = CardRect(position);
+		Color fill = isStart
+			? new Color(HighContrast ? "007a67" : "39735c")
+			: isGoal && !isRevealed
+				? new Color(HighContrast ? "6b2f91" : "473a58")
+				: goal == GoalContent.Gold
+					? new Color(HighContrast ? "ffd400" : "d5a62e")
+					: goal == GoalContent.Stone
+						? new Color(HighContrast ? "9aa0aa" : "6d7078")
+						: new Color(HighContrast ? "f0b86e" : "c5a56b");
+		DrawStyleBox(MakeCardStyle(fill), rect);
 
-            Vector2 end = direction switch
-            {
-                Direction.North => new(center.X, rect.Position.Y),
-                Direction.East => new(rect.End.X, center.Y),
-                Direction.South => new(center.X, rect.End.Y),
-                Direction.West => new(rect.Position.X, center.Y),
-                _ => center,
-            };
-            DrawLine(center, end, shadow, width, true);
-            DrawLine(center, end, new Color("6f5437"), width * 0.48f, true);
-        }
+		Vector2 center = rect.GetCenter();
+		if (isGoal && !isRevealed)
+		{
+			Vector2[] diamond =
+			[
+				center + new Vector2(0, -18) * _zoom,
+				center + new Vector2(15, 0) * _zoom,
+				center + new Vector2(0, 18) * _zoom,
+				center + new Vector2(-15, 0) * _zoom,
+			];
+			DrawColoredPolygon(diamond, new Color("b8a4ce"));
+			DrawCircle(center, 4.0f * _zoom, new Color("473a58"));
+			return;
+		}
 
-        DrawCircle(center, width * 0.5f, shadow);
-    }
+		if (goal == GoalContent.Gold)
+		{
+			DrawCircle(center, 17.0f * _zoom, new Color("ffe176"));
+			DrawCircle(center, 9.0f * _zoom, new Color("d99b23"));
+			return;
+		}
 
-    private Rect2 CardRect(BoardPosition position)
-    {
-        Vector2 center = BoardOrigin() + new Vector2(position.X, position.Y) * CellSize * _zoom;
-        Vector2 size = new(CardWidth * _zoom, CardHeight * _zoom);
-        return new Rect2(center - (size / 2.0f), size);
-    }
+		DrawTunnels(rect, edges);
+		if (isStart)
+		{
+			DrawCircle(center, 8.0f * _zoom, new Color("d8f2c4"));
+		}
+	}
 
-    private Vector2 BoardOrigin() => new(_pan.X, (Size.Y / 2.0f) + _pan.Y);
+	private void DrawTunnels(Rect2 rect, EdgeMask edges)
+	{
+		Vector2 center = rect.GetCenter();
+		float width = 13.0f * _zoom;
+		Color shadow = new("4a3827");
+		foreach (Direction direction in Enum.GetValues<Direction>())
+		{
+			if (!edges.IsOpen(direction))
+			{
+				continue;
+			}
 
-    private static StyleBoxFlat MakeCardStyle(Color color) => new()
-    {
-        BgColor = color,
-        BorderColor = color.Lightened(0.22f),
-        BorderWidthLeft = 2,
-        BorderWidthTop = 2,
-        BorderWidthRight = 2,
-        BorderWidthBottom = 2,
-        CornerRadiusTopLeft = 7,
-        CornerRadiusTopRight = 7,
-        CornerRadiusBottomLeft = 7,
-        CornerRadiusBottomRight = 7,
-    };
+			Vector2 end = direction switch
+			{
+				Direction.North => new(center.X, rect.Position.Y),
+				Direction.East => new(rect.End.X, center.Y),
+				Direction.South => new(center.X, rect.End.Y),
+				Direction.West => new(rect.Position.X, center.Y),
+				_ => center,
+			};
+			DrawLine(center, end, shadow, width, true);
+			DrawLine(center, end, new Color("6f5437"), width * 0.48f, true);
+		}
+
+		DrawCircle(center, width * 0.5f, shadow);
+	}
+
+	private Rect2 CardRect(BoardPosition position)
+	{
+		Vector2 center = BoardOrigin() + new Vector2(position.X, position.Y) * CellSize * _zoom;
+		Vector2 size = new(CardWidth * _zoom, CardHeight * _zoom);
+		return new Rect2(center - (size / 2.0f), size);
+	}
+
+	private Vector2 BoardOrigin() => new(_pan.X, (Size.Y / 2.0f) + _pan.Y);
+
+	private static StyleBoxFlat MakeCardStyle(Color color) => new()
+	{
+		BgColor = color,
+		BorderColor = color.Lightened(0.22f),
+		BorderWidthLeft = 2,
+		BorderWidthTop = 2,
+		BorderWidthRight = 2,
+		BorderWidthBottom = 2,
+		CornerRadiusTopLeft = 7,
+		CornerRadiusTopRight = 7,
+		CornerRadiusBottomLeft = 7,
+		CornerRadiusBottomRight = 7,
+	};
 }

@@ -271,6 +271,7 @@ public sealed class AuthoritativeRoom
                 seat.IsConnected,
                 state?.Hand.Count ?? 0,
                 state?.BrokenTools ?? ToolType.None,
+                state?.IsEliminated ?? false,
                 revealRoles ? state?.Role : null,
                 _state?.IsFinished == true ? state?.Gold : null);
         }).ToArray();

@@ -95,6 +95,11 @@ public static class RulesEngine
             return "The target player does not exist.";
         }
 
+        if (target.IsEliminated)
+        {
+            return "The target player is out of the round.";
+        }
+
         if ((target.BrokenTools & card.Tools) != ToolType.None)
         {
             return "The target already has that tool broken.";
@@ -127,6 +132,11 @@ public static class RulesEngine
         if (target is null)
         {
             return "The target player does not exist.";
+        }
+
+        if (target.IsEliminated)
+        {
+            return "The target player is out of the round.";
         }
 
         if ((target.BrokenTools & command.Tool) == ToolType.None)
@@ -222,21 +232,46 @@ public static class RulesEngine
     private static void FinishTurn(GameState state, List<GameEvent> events)
     {
         state.Phase = MatchPhase.CheckingRoundEnd;
+        PlayerState actor = state.CurrentPlayer;
+        if (actor.BrokenTools == ToolType.All)
+        {
+            actor.IsEliminated = true;
+            foreach (CardDefinition card in actor.Hand.ToArray())
+            {
+                actor.Hand.Remove(card);
+                state.Discard(card);
+            }
+
+            events.Add(new PlayerEliminated(actor.Id));
+        }
+
+        int minersRemaining = state.Players.Count(player => player.Role == PlayerRole.Miner && !player.IsEliminated);
+        int saboteursRemaining = state.Players.Count(player => player.Role == PlayerRole.Saboteur && !player.IsEliminated);
+        bool saboteursDominate = saboteursRemaining > 0 && saboteursRemaining >= minersRemaining;
+        bool nobodyRemains = minersRemaining + saboteursRemaining == 0;
         bool allCardsExhausted = state.DrawPile.Count == 0 && state.Players.All(player => player.Hand.Count == 0);
-        if (state.GoldWasReached || allCardsExhausted)
+        if (saboteursDominate)
+        {
+            events.Add(new SaboteursDominated(saboteursRemaining, minersRemaining));
+        }
+
+        if (state.GoldWasReached || allCardsExhausted || saboteursDominate || nobodyRemains)
         {
             FinishRound(state, events);
             return;
         }
 
-        state.Phase = MatchPhase.DrawingCard;
-        CardDefinition? drawn = state.DrawTo(state.CurrentPlayer);
-        if (drawn is not null)
+        if (!actor.IsEliminated)
         {
-            events.Add(new CardDrawn(state.CurrentPlayer.Id, drawn.Id));
+            state.Phase = MatchPhase.DrawingCard;
+            CardDefinition? drawn = state.DrawTo(actor);
+            if (drawn is not null)
+            {
+                events.Add(new CardDrawn(actor.Id, drawn.Id));
+            }
         }
 
-        state.CurrentPlayerIndex = (state.CurrentPlayerIndex + 1) % state.Players.Count;
+        state.CurrentPlayerIndex = NextActivePlayerIndex(state, state.CurrentPlayerIndex);
         state.TurnNumber++;
         state.Phase = MatchPhase.AwaitingAction;
         events.Add(new TurnAdvanced(state.TurnNumber, state.CurrentPlayer.Id));
@@ -259,7 +294,10 @@ public static class RulesEngine
         }
 
         state.Phase = MatchPhase.RoundSummary;
-        events.Add(new RoundEnded(state.RoundNumber, state.GoldWasReached));
+        events.Add(new RoundEnded(
+            state.RoundNumber,
+            state.GoldWasReached,
+            state.Players.Count(player => player.IsEliminated)));
 
         int nextStarter = state.LastPathPlayerId is PlayerId lastPath
             ? (IndexOf(state, lastPath) + 1) % state.Players.Count
@@ -299,6 +337,20 @@ public static class RulesEngine
         }
 
         throw new InvalidOperationException("Player not found.");
+    }
+
+    private static int NextActivePlayerIndex(GameState state, int currentIndex)
+    {
+        for (int offset = 1; offset <= state.Players.Count; offset++)
+        {
+            int candidate = (currentIndex + offset) % state.Players.Count;
+            if (!state.Players[candidate].IsEliminated)
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException("A round cannot continue without active players.");
     }
 
     private static bool IsSingleTool(ToolType tool) =>

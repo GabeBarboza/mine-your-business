@@ -93,4 +93,23 @@ public sealed class SetupAndScoringTests
         Assert.Equal(1, awards[miner.Id]);
         Assert.DoesNotContain(saboteur.Id, awards.Keys);
     }
+
+    [Fact]
+    public void EliminationBonusIsAwardedAtRoundScoringEvenWhenGoldIsReached()
+    {
+        PlayerState activeMiner = new(new("m1"), "Active miner") { Role = PlayerRole.Miner };
+        PlayerState eliminatedMiner = new(new("m2"), "Eliminated miner")
+        {
+            Role = PlayerRole.Miner,
+            IsEliminated = true,
+        };
+        PlayerState saboteur = new(new("s"), "Saboteur") { Role = PlayerRole.Saboteur };
+
+        IReadOnlyDictionary<PlayerId, int> awards =
+            RoundScoringService.Calculate([activeMiner, eliminatedMiner, saboteur], true);
+
+        Assert.Equal(1, awards[activeMiner.Id]);
+        Assert.Equal(1, awards[saboteur.Id]);
+        Assert.DoesNotContain(eliminatedMiner.Id, awards.Keys);
+    }
 }

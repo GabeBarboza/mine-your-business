@@ -24,10 +24,11 @@ public sealed class PlayerState
     public PlayerRole Role { get; internal set; }
     public List<CardDefinition> Hand { get; } = [];
     public ToolType BrokenTools { get; internal set; }
+    public bool IsEliminated { get; internal set; }
     public int Gold { get; internal set; }
     public Dictionary<BoardPosition, GoalContent> InspectedGoals { get; } = [];
 
-    public bool CanPlayPath => BrokenTools == ToolType.None;
+    public bool CanPlayPath => !IsEliminated && BrokenTools == ToolType.None;
 }
 
 public sealed class GameState
@@ -87,6 +88,7 @@ public sealed class GameState
             player.Role = roles[i];
             player.Hand.Clear();
             player.BrokenTools = ToolType.None;
+            player.IsEliminated = false;
             player.InspectedGoals.Clear();
         }
 

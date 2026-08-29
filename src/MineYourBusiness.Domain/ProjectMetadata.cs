@@ -7,5 +7,5 @@ public static class ProjectMetadata
 {
     public const string DisplayName = "MINE YOUR BUSINESS";
     public const string Tagline = "Just do your job. Probably.";
-    public const string RulesetVersion = "0.2.0";
+    public const string RulesetVersion = "0.4.0";
 }

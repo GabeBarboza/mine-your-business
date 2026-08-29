@@ -7,18 +7,22 @@ public static class RoundScoringService
         bool goldReached)
     {
         Dictionary<PlayerId, int> awards = [];
+        int eliminationBonus = players.Count(player => player.IsEliminated);
+        PlayerState[] activeSaboteurs = players
+            .Where(player => player.Role == PlayerRole.Saboteur && !player.IsEliminated)
+            .ToArray();
         if (goldReached)
         {
-            foreach (PlayerState miner in players.Where(player => player.Role == PlayerRole.Miner))
+            foreach (PlayerState miner in players.Where(player => player.Role == PlayerRole.Miner && !player.IsEliminated))
             {
                 awards[miner.Id] = 1;
             }
 
+            AwardEliminationBonus(awards, activeSaboteurs, eliminationBonus);
             return awards;
         }
 
-        PlayerState[] saboteurs = players.Where(player => player.Role == PlayerRole.Saboteur).ToArray();
-        int amount = saboteurs.Length switch
+        int amount = activeSaboteurs.Length switch
         {
             0 => 0,
             1 => 4,
@@ -27,11 +31,27 @@ public static class RoundScoringService
             _ => throw new InvalidOperationException("Unexpected saboteur count."),
         };
 
-        foreach (PlayerState saboteur in saboteurs)
+        foreach (PlayerState saboteur in activeSaboteurs)
         {
-            awards[saboteur.Id] = amount;
+            awards[saboteur.Id] = amount + eliminationBonus;
         }
 
         return awards;
+    }
+
+    private static void AwardEliminationBonus(
+        Dictionary<PlayerId, int> awards,
+        IEnumerable<PlayerState> saboteurs,
+        int eliminationBonus)
+    {
+        if (eliminationBonus == 0)
+        {
+            return;
+        }
+
+        foreach (PlayerState saboteur in saboteurs)
+        {
+            awards[saboteur.Id] = awards.GetValueOrDefault(saboteur.Id) + eliminationBonus;
+        }
     }
 }

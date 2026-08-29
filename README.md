@@ -4,7 +4,7 @@
 
 Jogo de estrategia, caminhos e papeis secretos para desktop, desenvolvido com Godot 4.7.2 .NET e C#.
 
-O projeto concluiu o multiplayer privado do Marco 3. A identidade, os textos e os assets finais serao originais; o manual de Saboteur e usado apenas como referencia de regras e comportamento.
+O projeto concluiu o conteudo e polimento do Marco 4 e esta pronto para beta fechado. A identidade, os textos, a ilustracao e os sinais sonoros sao originais; o manual de Saboteur e usado apenas como referencia de regras e comportamento.
 
 ## Requisitos
 
@@ -18,7 +18,11 @@ O projeto concluiu o multiplayer privado do Marco 3. A identidade, os textos e o
 2. Aguarde a restauracao e compilacao do projeto C#.
 3. Pressione F6 para executar a cena atual ou F5 para executar o projeto.
 
-Na tela inicial, informe os nomes das tres pessoas e a seed. Cada turno comeca com uma barreira de privacidade antes de revelar papel, mao e informacoes de mapa. A mesa aceita clique, zoom pela roda e pan com o botao do meio.
+Na primeira abertura, o guia apresenta objetivo, turno, cartas, controles e privacidade. Na tela inicial, informe os nomes das tres pessoas e a seed. Cada turno comeca com uma barreira de privacidade antes de revelar papel, mao e informacoes de mapa. A mesa aceita clique, zoom pela roda e pan com o botao do meio.
+
+Em `CONFIGURACOES`, ajuste escala da interface, volume, alto contraste e movimento reduzido. Use `Tab` para navegar, `1` a `9` para escolher cartas e, com foco na mesa, setas para mover o cursor, `Enter` para confirmar, `+`/`-` para zoom e `F` para recentralizar.
+
+A telemetria beta e local, opcional e desativada por padrao. Ela nao transmite dados e pode ser apagada na propria tela de configuracoes.
 
 Os controles `JOGADA AUTO`, `FIM DA RODADA` e `PLACAR FINAL` sao atalhos administrativos de depuracao para validar o fluxo completo sem depender de uma sequencia manual longa.
 
@@ -69,3 +73,4 @@ $env:GODOT_BIN = "C:\caminho\para\Godot_v4.7.2-stable_mono_win64.exe"
 Veja o [plano de desenvolvimento](docs/PLANO_DE_DESENVOLVIMENTO.md) para o escopo e os marcos.
 O escopo entregue e o roteiro de validacao do vertical slice estao em [docs/MARCO_2_VERTICAL_SLICE.md](docs/MARCO_2_VERTICAL_SLICE.md).
 O protocolo e o roteiro de validacao do multiplayer estao em [docs/MARCO_3_MULTIPLAYER_PRIVADO.md](docs/MARCO_3_MULTIPLAYER_PRIVADO.md).
+O escopo audiovisual, a privacidade e os roteiros de usabilidade e balanceamento estao em [docs/MARCO_4_CONTEUDO_E_POLIMENTO.md](docs/MARCO_4_CONTEUDO_E_POLIMENTO.md).

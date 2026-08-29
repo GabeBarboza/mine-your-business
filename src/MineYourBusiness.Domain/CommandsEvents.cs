@@ -40,9 +40,11 @@ public sealed record GoalInspected(PlayerId PlayerId, BoardPosition Position, Go
 public sealed record GoalRevealed(BoardPosition Position, GoalContent Content) : GameEvent;
 public sealed record CardDrawn(PlayerId PlayerId, CardId CardId) : GameEvent;
 public sealed record TurnAdvanced(int TurnNumber, PlayerId PlayerId) : GameEvent;
+public sealed record PlayerEliminated(PlayerId PlayerId) : GameEvent;
+public sealed record SaboteursDominated(int SaboteursRemaining, int MinersRemaining) : GameEvent;
 public sealed record GoldAwarded(PlayerId PlayerId, int Amount) : GameEvent;
 public sealed record RoleRevealed(PlayerId PlayerId, PlayerRole Role) : GameEvent;
-public sealed record RoundEnded(int RoundNumber, bool GoldReached) : GameEvent;
+public sealed record RoundEnded(int RoundNumber, bool GoldReached, int EliminatedPlayers = 0) : GameEvent;
 public sealed record MatchEnded(IReadOnlyList<PlayerId> Winners) : GameEvent;
 
 public sealed record CommandResult(bool Accepted, string? Error, IReadOnlyList<GameEvent> Events)

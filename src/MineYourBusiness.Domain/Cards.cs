@@ -16,6 +16,7 @@ public enum ToolType
     Lamp = 1,
     Cart = 2,
     Pickaxe = 4,
+    All = Lamp | Cart | Pickaxe,
 }
 
 public enum GoalContent

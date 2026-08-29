@@ -20,4 +20,10 @@ public sealed class ProjectMetadataTests
         Assert.NotNull(version);
         Assert.Equal(0, version.Major);
     }
+
+    [Fact]
+    public void ClosedBetaUsesMilestoneFourRuleset()
+    {
+        Assert.Equal("0.4.0", ProjectMetadata.RulesetVersion);
+    }
 }

@@ -7,19 +7,21 @@ namespace MineYourBusiness;
 /// <summary>Composition root for local debug play and private ENet rooms.</summary>
 public partial class Bootstrap : Control
 {
-    private readonly Color _ink = new("e9edf2");
-    private readonly Color _muted = new("9daaba");
-    private readonly Color _accent = new("e2b84b");
+    private Color _ink = new("e9edf2");
+    private Color _muted = new("9daaba");
+    private Color _accent = new("e2b84b");
     private LocalMatchController? _match;
     private BoardView? _board;
-    private VBoxContainer? _players;
+    private readonly List<VBoxContainer> _playerSeats = [];
+    private readonly List<Button> _playerSeatButtons = [];
     private HBoxContainer? _hand;
+    private VBoxContainer? _equipment;
+    private RoleCardView? _roleCard;
+    private PlayerId? _roleCardPlayerId;
     private Label? _turnLabel;
     private Label? _status;
-    private Label? _selectionHelp;
-    private OptionButton? _targetPicker;
+    private HBoxContainer? _handControls;
     private OptionButton? _toolPicker;
-    private Button? _playTargetButton;
     private Button? _discardButton;
     private VBoxContainer? _publicLog;
     private Control? _overlay;
@@ -33,14 +35,23 @@ public partial class Bootstrap : Control
         _online.SnapshotChanged += OnOnlineSnapshot;
         _online.StatusChanged += OnOnlineStatus;
         AddChild(_online);
-        BuildStartScreen();
-        GD.Print($"{ProjectMetadata.DisplayName} milestone 3 private multiplayer started.");
+        InitializeExperience();
+        if (_preferences.TutorialCompleted)
+        {
+            BuildStartScreen();
+        }
+        else
+        {
+            BuildTutorial();
+        }
+
+        GD.Print($"{ProjectMetadata.DisplayName} milestone 4 closed beta started.");
     }
 
     private void BuildStartScreen()
     {
         ClearScreen();
-        AddChild(FullBackground(new Color("0c1118")));
+        AddMenuBackdrop();
         CenterContainer center = new();
         center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(center);
@@ -51,7 +62,7 @@ public partial class Bootstrap : Control
         panel.AddChild(content);
         content.AddChild(Heading(ProjectMetadata.DisplayName, 38, _accent));
         content.AddChild(LabelText(ProjectMetadata.Tagline, 18, _muted));
-        content.AddChild(LabelText("MULTIPLAYER PRIVADO · MARCO 3", 13, new Color("67d5a4")));
+        content.AddChild(LabelText("BETA FECHADO · MARCO 4", 13, new Color("67d5a4")));
         content.AddChild(Spacer(10));
         content.AddChild(LabelText("Três pessoas compartilham esta instância. A barreira de privacidade protege papel, mão e mapas entre turnos.", 15, _ink, true));
 
@@ -71,13 +82,23 @@ public partial class Bootstrap : Control
         Button online = SecondaryButton("CRIAR OU ENTRAR EM SALA ONLINE");
         online.Pressed += BuildOnlineMenu;
         content.AddChild(online);
+        HBoxContainer support = HBox(8);
+        Button tutorial = SecondaryButton("COMO JOGAR");
+        tutorial.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        tutorial.Pressed += () => BuildTutorial();
+        support.AddChild(tutorial);
+        Button settings = SecondaryButton("CONFIGURAÇÕES");
+        settings.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        settings.Pressed += BuildSettingsScreen;
+        support.AddChild(settings);
+        content.AddChild(support);
         content.AddChild(LabelText("Clique para escolher · roda para zoom · botão do meio para mover a mesa", 12, _muted, true));
     }
 
     private void BuildOnlineMenu()
     {
         ClearScreen();
-        AddChild(FullBackground(new Color("0c1118")));
+        AddMenuBackdrop();
         CenterContainer center = new();
         center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(center);
@@ -233,12 +254,14 @@ public partial class Bootstrap : Control
             string finalScore = player.RevealedGold is int gold
                 ? $" · {gold} pepitas · {player.RevealedRole}"
                 : string.Empty;
-            publicContent.AddChild(LabelText($"{(current ? "▶" : "•")} {player.Name} · mão {player.CardCount} · {ToolLabel(player.BrokenTools)}{finalScore}{(player.IsConnected ? "" : " · OFFLINE")}", 14, current ? new Color("72dda9") : _ink, true));
+            string eliminated = player.IsEliminated ? " · FORA DA RODADA" : string.Empty;
+            publicContent.AddChild(LabelText($"{(current ? "▶" : "•")} {player.Name} · mão {player.CardCount} · {ToolLabel(player.BrokenTools)}{eliminated}{finalScore}{(player.IsConnected ? "" : " · OFFLINE")}", 14, current ? new Color("72dda9") : _ink, true));
         }
 
         BoardView onlineBoard = new()
         {
             CustomMinimumSize = new(620, 330),
+            HighContrast = _preferences.HighContrast,
             PositionSelected = position =>
             {
                 positionX.Value = position.X;
@@ -282,6 +305,7 @@ public partial class Bootstrap : Control
         foreach (RoomPlayerView player in snapshot.Public.Players)
         {
             target.AddItem(player.Name);
+            target.SetItemDisabled(target.ItemCount - 1, player.IsEliminated);
         }
 
         OptionButton tool = new();
@@ -380,6 +404,7 @@ public partial class Bootstrap : Control
             return;
         }
 
+        Track("local_match_started", new Dictionary<string, long> { ["player_count"] = _match.State.Players.Count });
         BuildMatchScreen();
         Refresh();
         ShowTurnPrivacy();
@@ -388,37 +413,70 @@ public partial class Bootstrap : Control
     private void BuildMatchScreen()
     {
         ClearScreen();
+        _playerSeats.Clear();
+        _playerSeatButtons.Clear();
+        _roleCardPlayerId = null;
         AddChild(FullBackground(new Color("0b1118")));
         MarginContainer margin = new();
         margin.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         margin.AddThemeConstantOverride("margin_left", 22);
-        margin.AddThemeConstantOverride("margin_top", 16);
+        margin.AddThemeConstantOverride("margin_top", 10);
         margin.AddThemeConstantOverride("margin_right", 22);
-        margin.AddThemeConstantOverride("margin_bottom", 18);
+        margin.AddThemeConstantOverride("margin_bottom", 10);
         AddChild(margin);
-        VBoxContainer shell = VBox(10);
+        VBoxContainer shell = VBox(6);
         margin.AddChild(shell);
         shell.AddChild(BuildTopBar());
-        HBoxContainer body = HBox(12);
-        body.SizeFlagsVertical = SizeFlags.ExpandFill;
-        shell.AddChild(body);
-        body.AddChild(BuildPlayerRail());
-        body.AddChild(BuildTableArea());
-        body.AddChild(BuildLogRail());
+
+        HBoxContainer topSeatRow = HBox(12);
+        topSeatRow.AddChild(FixedSpace(210));
+        Button topSeat = BuildPlayerSeat();
+        topSeat.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        topSeat.CustomMinimumSize = new Vector2(0, 76);
+        topSeatRow.AddChild(topSeat);
+        topSeatRow.AddChild(FixedSpace(210));
+        shell.AddChild(topSeatRow);
+
+        HBoxContainer tableRow = HBox(12);
+        tableRow.SizeFlagsVertical = SizeFlags.ExpandFill;
+        Button leftSeat = BuildPlayerSeat();
+        leftSeat.CustomMinimumSize = new Vector2(210, 0);
+        tableRow.AddChild(leftSeat);
+        tableRow.AddChild(BuildBoardPanel());
+        Button rightSeat = BuildPlayerSeat();
+        rightSeat.CustomMinimumSize = new Vector2(210, 0);
+        tableRow.AddChild(rightSeat);
+        shell.AddChild(tableRow);
+
+        HBoxContainer lowerRow = HBox(12);
+        _roleCard = new RoleCardView();
+        _roleCard.RevealChanged += revealed =>
+        {
+            if (revealed)
+            {
+                _audio?.PlayReveal();
+            }
+            else
+            {
+                _audio?.PlayClick();
+            }
+        };
+        lowerRow.AddChild(_roleCard);
+        lowerRow.AddChild(BuildHandArea());
+        lowerRow.AddChild(BuildLogRail());
+        shell.AddChild(lowerRow);
         _status = LabelText("Selecione uma carta.", 13, _muted, true);
+        _status.Visible = false;
         shell.AddChild(_status);
     }
 
     private HBoxContainer BuildTopBar()
     {
         HBoxContainer bar = HBox(8);
-        bar.CustomMinimumSize = new(0, 48);
-        VBoxContainer title = VBox(0);
-        title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        title.AddChild(Heading(ProjectMetadata.DisplayName, 24, _accent));
-        _turnLabel = LabelText("Preparando partida…", 13, _muted);
-        title.AddChild(_turnLabel);
-        bar.AddChild(title);
+        bar.CustomMinimumSize = new(0, 40);
+        _turnLabel = LabelText("Preparando partida…", 14, _ink);
+        _turnLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        bar.AddChild(_turnLabel);
         Button nextTurn = SecondaryButton("JOGADA AUTO");
         nextTurn.TooltipText = "Executa uma jogada determinística válida para testes.";
         nextTurn.Pressed += () => RunAdministrative(() => _match!.AdvanceAdministrativeTurn());
@@ -434,55 +492,98 @@ public partial class Bootstrap : Control
         return bar;
     }
 
-    private PanelContainer BuildPlayerRail()
+    private Button BuildPlayerSeat()
     {
-        PanelContainer panel = Panel(new Color("131d28"), 15);
-        panel.CustomMinimumSize = new(210, 0);
-        VBoxContainer rail = VBox(10);
-        panel.AddChild(rail);
-        rail.AddChild(Heading("EQUIPE", 14, _muted));
-        _players = VBox(7);
-        rail.AddChild(_players);
-        rail.AddChild(Spacer(4, true));
-        rail.AddChild(LabelText("O ouro fica secreto até o placar final.", 12, _muted, true));
-        return panel;
+        int seatIndex = _playerSeatButtons.Count;
+        Button button = new()
+        {
+            FocusMode = FocusModeEnum.All,
+            MouseDefaultCursorShape = CursorShape.Arrow,
+        };
+        button.AddThemeStyleboxOverride("normal", RoundedStyle(new Color("131d28"), 10));
+        button.AddThemeStyleboxOverride("hover", RoundedStyle(new Color("1b2a37"), 10));
+        button.AddThemeStyleboxOverride("pressed", RoundedStyle(new Color("23413a"), 10));
+        button.AddThemeStyleboxOverride("disabled", RoundedStyle(new Color("131d28"), 10));
+        button.Pressed += () => PlaySelectedOnPlayer(seatIndex);
+        CenterContainer center = new() { MouseFilter = MouseFilterEnum.Ignore };
+        center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        button.AddChild(center);
+        VBoxContainer seat = VBox(3);
+        seat.MouseFilter = MouseFilterEnum.Ignore;
+        center.AddChild(seat);
+        _playerSeats.Add(seat);
+        _playerSeatButtons.Add(button);
+        return button;
     }
 
-    private VBoxContainer BuildTableArea()
+    private Control BuildBoardPanel()
     {
-        VBoxContainer area = VBox(9);
-        area.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        Control stack = new()
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
         PanelContainer boardPanel = Panel(new Color("101923"), 8);
-        boardPanel.SizeFlagsVertical = SizeFlags.ExpandFill;
-        _board = new BoardView { PositionSelected = OnBoardPositionSelected };
+        boardPanel.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        _board = new BoardView { PositionSelected = OnBoardPositionSelected, HighContrast = _preferences.HighContrast };
         boardPanel.AddChild(_board);
-        area.AddChild(boardPanel);
+        stack.AddChild(boardPanel);
+        _discardButton = SecondaryButton("🗑");
+        _discardButton.TooltipText = "Descartar a carta selecionada";
+        _discardButton.CustomMinimumSize = new Vector2(42, 42);
+        _discardButton.Visible = false;
+        _discardButton.SetAnchorsAndOffsetsPreset(LayoutPreset.BottomRight);
+        _discardButton.OffsetLeft = -50;
+        _discardButton.OffsetTop = -50;
+        _discardButton.OffsetRight = -8;
+        _discardButton.OffsetBottom = -8;
+        _discardButton.Pressed += DiscardSelected;
+        stack.AddChild(_discardButton);
+        return stack;
+    }
+
+    private PanelContainer BuildHandArea()
+    {
         PanelContainer handPanel = Panel(new Color("131d28"), 12);
+        handPanel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        handPanel.CustomMinimumSize = new Vector2(0, 166);
         VBoxContainer handStack = VBox(7);
         handPanel.AddChild(handStack);
-        HBoxContainer prompt = HBox(6);
-        _selectionHelp = LabelText("SUA MÃO", 13, _muted, true);
-        _selectionHelp.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        prompt.AddChild(_selectionHelp);
-        _targetPicker = new OptionButton { Visible = false, CustomMinimumSize = new(130, 0) };
-        prompt.AddChild(_targetPicker);
+        _handControls = HBox(6);
+        _handControls.Visible = false;
+        Control controlSpacer = FixedSpace(0);
+        controlSpacer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _handControls.AddChild(controlSpacer);
         _toolPicker = new OptionButton { Visible = false, CustomMinimumSize = new(105, 0) };
-        prompt.AddChild(_toolPicker);
-        _playTargetButton = PrimaryButton("APLICAR");
-        _playTargetButton.Visible = false;
-        _playTargetButton.Pressed += PlaySelectedOnTarget;
-        prompt.AddChild(_playTargetButton);
-        _discardButton = SecondaryButton("DESCARTAR");
-        _discardButton.Disabled = true;
-        _discardButton.Pressed += DiscardSelected;
-        prompt.AddChild(_discardButton);
-        handStack.AddChild(prompt);
-        ScrollContainer scroll = new() { CustomMinimumSize = new(0, 112) };
+        _toolPicker.ItemSelected += _ => UpdatePlayerSeatTargets();
+        _handControls.AddChild(_toolPicker);
+        handStack.AddChild(_handControls);
+        HBoxContainer cardsAndEquipment = HBox(0);
+        cardsAndEquipment.SizeFlagsVertical = SizeFlags.ExpandFill;
+        ScrollContainer scroll = new()
+        {
+            CustomMinimumSize = new Vector2(0, 122),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
+        MarginContainer hoverPadding = new() { SizeFlagsVertical = SizeFlags.ExpandFill };
+        hoverPadding.AddThemeConstantOverride("margin_left", 7);
+        hoverPadding.AddThemeConstantOverride("margin_top", 7);
+        hoverPadding.AddThemeConstantOverride("margin_right", 7);
+        hoverPadding.AddThemeConstantOverride("margin_bottom", 7);
         _hand = HBox(7);
-        scroll.AddChild(_hand);
-        handStack.AddChild(scroll);
-        area.AddChild(handPanel);
-        return area;
+        _hand.SizeFlagsVertical = SizeFlags.ExpandFill;
+        hoverPadding.AddChild(_hand);
+        scroll.AddChild(hoverPadding);
+        cardsAndEquipment.AddChild(scroll);
+        PanelContainer equipmentPanel = Panel(new Color("101923"), 7);
+        equipmentPanel.CustomMinimumSize = new Vector2(112, 0);
+        equipmentPanel.SizeFlagsVertical = SizeFlags.ExpandFill;
+        _equipment = VBox(5);
+        equipmentPanel.AddChild(_equipment);
+        cardsAndEquipment.AddChild(equipmentPanel);
+        handStack.AddChild(cardsAndEquipment);
+        return handPanel;
     }
 
     private PanelContainer BuildLogRail()
@@ -502,7 +603,8 @@ public partial class Bootstrap : Control
 
     private void Refresh()
     {
-        if (_match is null || _board is null || _players is null || _hand is null)
+        if (_match is null || _board is null || _hand is null || _equipment is null ||
+            _roleCard is null || _playerSeats.Count != 3 || _playerSeatButtons.Count != 3)
         {
             return;
         }
@@ -510,25 +612,50 @@ public partial class Bootstrap : Control
         GameState state = _match.State;
         _turnLabel!.Text = state.IsFinished
             ? "Partida concluída"
-            : $"Rodada {state.RoundNumber}/3 · Turno {state.TurnNumber} · {state.CurrentPlayer.Name}";
-        ClearChildren(_players);
-        foreach (PlayerState player in state.Players)
+            : $"RODADA {state.RoundNumber}/3  ·  TURNO {state.TurnNumber}  ·  {state.CurrentPlayer.Name}  ·  OURO {state.CurrentPlayer.Gold}";
+        for (int index = 0; index < _playerSeats.Count; index++)
         {
+            VBoxContainer seat = _playerSeats[index];
+            ClearChildren(seat);
+            PlayerState player = state.Players[index];
             bool current = !state.IsFinished && player.Id == state.CurrentPlayer.Id;
-            PanelContainer badge = Panel(current ? new Color("23413a") : new Color("192531"), 9);
-            VBoxContainer details = VBox(2);
-            details.AddChild(LabelText((current ? "● " : "") + player.Name, 14, current ? new Color("72dda9") : _ink));
-            details.AddChild(LabelText($"Mão {player.Hand.Count} · {ToolLabel(player.BrokenTools)}", 11, _muted, true));
-            badge.AddChild(details);
-            _players.AddChild(badge);
+            Label name = LabelText((current ? "● " : "") + player.Name, 14, current ? new Color("72dda9") : _ink);
+            name.HorizontalAlignment = HorizontalAlignment.Center;
+            seat.AddChild(name);
+            Label summary = LabelText(player.IsEliminated ? "FORA DA RODADA" : $"Mão {player.Hand.Count} · Ouro {player.Gold}", 11,
+                player.IsEliminated ? new Color("ff887a") : _muted);
+            summary.HorizontalAlignment = HorizontalAlignment.Center;
+            seat.AddChild(summary);
+            Label tools = LabelText(ToolLabel(player.BrokenTools), 10, player.BrokenTools == ToolType.None ? _muted : new Color("ff887a"));
+            tools.HorizontalAlignment = HorizontalAlignment.Center;
+            seat.AddChild(tools);
         }
+
+        ClearChildren(_equipment);
+        _equipment.AddChild(LabelText("EQUIPAMENTOS", 10, _muted, true));
+        foreach (ToolType tool in new[] { ToolType.Lamp, ToolType.Cart, ToolType.Pickaxe })
+        {
+            bool broken = (state.CurrentPlayer.BrokenTools & tool) != ToolType.None;
+            PanelContainer chip = Panel(broken ? new Color("4a2528") : new Color("1d4439"), 5);
+            chip.AddChild(LabelText($"{(broken ? "×" : "✓")} {ToolName(tool)}", 10, broken ? new Color("ff887a") : new Color("72dda9"), true));
+            _equipment.AddChild(chip);
+        }
+
+        if (_roleCardPlayerId != state.CurrentPlayer.Id)
+        {
+            _roleCard.Conceal();
+            _roleCardPlayerId = state.CurrentPlayer.Id;
+        }
+
+        _roleCard.Display(state.CurrentPlayer.Role, !state.IsFinished);
 
         ClearChildren(_hand);
         if (!state.IsFinished)
         {
             foreach (CardDefinition card in state.CurrentPlayer.Hand)
             {
-                Button button = CardButton(card, card == _selectedCard);
+                int shortcutIndex = _hand.GetChildCount() + 1;
+                Button button = CardButton(card, card == _selectedCard, shortcutIndex);
                 button.Pressed += () => SelectCard(card);
                 _hand.AddChild(button);
             }
@@ -551,43 +678,31 @@ public partial class Bootstrap : Control
 
     private void UpdateSelectionControls()
     {
-        if (_match is null || _targetPicker is null || _toolPicker is null ||
-            _playTargetButton is null || _discardButton is null || _selectionHelp is null)
+        if (_match is null || _toolPicker is null || _discardButton is null || _handControls is null)
         {
             return;
         }
 
-        _targetPicker.Visible = false;
+        _handControls.Visible = false;
         _toolPicker.Visible = false;
-        _playTargetButton.Visible = false;
+        _discardButton.Visible = _selectedCard is not null;
         _discardButton.Disabled = _selectedCard is null;
         if (_selectedCard is null)
         {
-            _selectionHelp.Text = "SUA MÃO · escolha uma carta";
+            SetStatus("Selecione uma carta.");
+            UpdatePlayerSeatTargets();
             return;
         }
 
-        _selectionHelp.Text = _selectedCard.Kind switch
+        SetStatus(_selectedCard.Kind switch
         {
             CardKind.Path => "Clique em um destino verde na mesa",
             CardKind.Map => "Clique em um objetivo fechado",
             CardKind.Collapse => "Clique em um caminho comum",
-            CardKind.BreakTool => "Escolha quem terá a ferramenta quebrada",
-            CardKind.RepairTool => "Escolha jogador e ferramenta para consertar",
+            CardKind.BreakTool => "Clique no jogador que terá a ferramenta quebrada",
+            CardKind.RepairTool => "Escolha a ferramenta e clique no jogador que será consertado",
             _ => "Escolha o destino",
-        };
-        if (_selectedCard.Kind is CardKind.BreakTool or CardKind.RepairTool)
-        {
-            _targetPicker.Clear();
-            foreach (PlayerState player in _match.State.Players)
-            {
-                _targetPicker.AddItem(player.Name);
-            }
-
-            _targetPicker.Visible = true;
-            _playTargetButton.Visible = true;
-        }
-
+        });
         if (_selectedCard.Kind == CardKind.RepairTool)
         {
             _toolPicker.Clear();
@@ -597,8 +712,11 @@ public partial class Bootstrap : Control
                 _toolPicker.SetItemMetadata(_toolPicker.ItemCount - 1, (int)tool);
             }
 
+            _handControls.Visible = true;
             _toolPicker.Visible = true;
         }
+
+        UpdatePlayerSeatTargets();
     }
 
     private void OnBoardPositionSelected(BoardPosition position)
@@ -613,18 +731,43 @@ public partial class Bootstrap : Control
         Resolve(_match.PlayCard(_selectedCard, position));
     }
 
-    private void PlaySelectedOnTarget()
+    private void PlaySelectedOnPlayer(int playerIndex)
     {
-        if (_match is null || _selectedCard is null || _targetPicker is null)
+        if (_match is null || _selectedCard is null ||
+            _selectedCard.Kind is not (CardKind.BreakTool or CardKind.RepairTool))
         {
             return;
         }
 
-        PlayerId target = _match.State.Players[_targetPicker.Selected].Id;
+        PlayerId target = _match.State.Players[playerIndex].Id;
         ToolType tool = _selectedCard.Kind == CardKind.RepairTool && _toolPicker is not null && _toolPicker.ItemCount > 0
             ? (ToolType)(int)_toolPicker.GetItemMetadata(_toolPicker.Selected)
             : ToolType.None;
         Resolve(_match.PlayCard(_selectedCard, targetPlayerId: target, tool: tool));
+    }
+
+    private void UpdatePlayerSeatTargets()
+    {
+        if (_match is null)
+        {
+            return;
+        }
+
+        for (int index = 0; index < _playerSeatButtons.Count; index++)
+        {
+            PlayerState player = _match.State.Players[index];
+            bool canTarget = _selectedCard is not null && !player.IsEliminated && _selectedCard.Kind switch
+            {
+                CardKind.BreakTool => (player.BrokenTools & _selectedCard.Tools) == ToolType.None,
+                CardKind.RepairTool => _toolPicker is { ItemCount: > 0 } &&
+                    (player.BrokenTools & (ToolType)(int)_toolPicker.GetItemMetadata(_toolPicker.Selected)) != ToolType.None,
+                _ => false,
+            };
+            Button button = _playerSeatButtons[index];
+            button.Disabled = !canTarget;
+            button.MouseDefaultCursorShape = canTarget ? CursorShape.PointingHand : CursorShape.Arrow;
+            button.TooltipText = canTarget ? "Clique para usar a carta neste jogador." : string.Empty;
+        }
     }
 
     private void DiscardSelected()
@@ -639,10 +782,14 @@ public partial class Bootstrap : Control
     {
         if (!result.Accepted)
         {
+            _audio?.PlayWarning();
+            Track("command_rejected");
             SetStatus(TranslateError(result.Error), true);
             return;
         }
 
+        _audio?.PlaySuccess();
+        Track("command_accepted");
         _selectedCard = null;
         AppendPublicEvents(result.Events);
         Refresh();
@@ -668,12 +815,14 @@ public partial class Bootstrap : Control
         GoalInspected? inspection = events.OfType<GoalInspected>().LastOrDefault();
         if (inspection is not null)
         {
+            _audio?.PlayReveal();
             ShowMessageOverlay("INFORMAÇÃO PRIVADA", $"O objetivo em ({inspection.Position.X}, {inspection.Position.Y}) contém {GoalName(inspection.Content)}.", "OCULTAR E PASSAR", ShowTurnPrivacy);
             return;
         }
 
         if (_match!.State.IsFinished)
         {
+            Track("match_finished", new Dictionary<string, long> { ["turn_count"] = _match.State.TurnNumber });
             ShowFinalScore();
             return;
         }
@@ -681,11 +830,20 @@ public partial class Bootstrap : Control
         RoundEnded? round = events.OfType<RoundEnded>().LastOrDefault();
         if (round is not null)
         {
+            Track("round_finished", new Dictionary<string, long> { ["round_number"] = round.RoundNumber });
+            SaboteursDominated? domination = events.OfType<SaboteursDominated>().LastOrDefault();
+            int eliminatedCount = round.EliminatedPlayers;
             string roles = string.Join("\n", events.OfType<RoleRevealed>()
                 .GroupBy(item => item.PlayerId)
                 .Select(group => group.Last())
                 .Select(item => $"{PlayerName(item.PlayerId)} — {RoleName(item.Role)}"));
-            ShowMessageOverlay($"RODADA {round.RoundNumber} ENCERRADA", (round.GoldReached ? "O ouro foi alcançado." : "O ouro não foi alcançado.") + "\n\n" + roles, "COMEÇAR PRÓXIMA RODADA", ShowTurnPrivacy);
+            string outcome = domination is not null
+                ? "Os sabotadores igualaram ou superaram os mineradores restantes."
+                : round.GoldReached ? "O ouro foi alcançado." : "O ouro não foi alcançado.";
+            string bonus = eliminatedCount > 0
+                ? $"\nBônus dos sabotadores: +{eliminatedCount} pepita{(eliminatedCount == 1 ? string.Empty : "s")}."
+                : string.Empty;
+            ShowMessageOverlay($"RODADA {round.RoundNumber} ENCERRADA", outcome + bonus + "\n\n" + roles, "COMEÇAR PRÓXIMA RODADA", ShowTurnPrivacy);
             return;
         }
 
@@ -699,9 +857,10 @@ public partial class Bootstrap : Control
             return;
         }
 
+        _roleCard?.Conceal();
         PlayerState player = _match.State.CurrentPlayer;
         ShowMessageOverlay("TROCA DE TURNO", $"Passe o controle para {player.Name}.\nOs demais jogadores devem desviar o olhar.", "REVELAR MINHAS INFORMAÇÕES", () =>
-            ShowMessageOverlay(player.Name.ToUpperInvariant(), $"Seu papel: {RoleName(player.Role)}\n\nSua mão já está disponível na mesa." + InspectedGoalText(player), "COMEÇAR TURNO", CloseOverlay));
+            ShowMessageOverlay(player.Name.ToUpperInvariant(), "Sua mão está disponível na mesa. Clique na carta de função quando quiser conferir seu papel." + InspectedGoalText(player), "COMEÇAR TURNO", CloseOverlay));
     }
 
     private void ShowFinalScore()
@@ -761,6 +920,8 @@ public partial class Bootstrap : Control
                 CardDiscarded discarded => $"{PlayerName(discarded.PlayerId)} descartou uma carta virada para baixo.",
                 ToolBroken broken => $"{PlayerName(broken.PlayerId)} quebrou {ToolName(broken.Tool)} de {PlayerName(broken.TargetPlayerId)}.",
                 ToolRepaired repaired => $"{PlayerName(repaired.PlayerId)} consertou {ToolName(repaired.Tool)} de {PlayerName(repaired.TargetPlayerId)}.",
+                PlayerEliminated eliminated => $"{PlayerName(eliminated.PlayerId)} ficou sem equipamentos e está fora da rodada.",
+                SaboteursDominated => "Os sabotadores dominaram os mineradores restantes.",
                 PathCollapsed collapsed => $"{PlayerName(collapsed.PlayerId)} removeu um caminho.",
                 GoalRevealed revealed => $"Objetivo revelado: {GoalName(revealed.Content)}.",
                 RoundEnded ended => $"Rodada {ended.RoundNumber} encerrada.",
@@ -781,6 +942,7 @@ public partial class Bootstrap : Control
         if (_status is not null)
         {
             _status.Text = message;
+            _status.Visible = error || !string.Equals(message, "Selecione uma carta.", StringComparison.Ordinal);
             _status.Modulate = error ? new Color("ff887a") : _muted;
         }
     }
@@ -795,6 +957,7 @@ public partial class Bootstrap : Control
         "A map can inspect only a hidden goal." => "O mapa só pode olhar um objetivo ainda fechado.",
         "The target already has that tool broken." => "Essa ferramenta já está quebrada nesse alvo.",
         "The selected tool is not broken." => "A ferramenta escolhida não está quebrada.",
+        "The target player is out of the round." => "Esse jogador já está fora da rodada.",
         _ => error ?? "Jogada inválida.",
     };
 
@@ -846,17 +1009,81 @@ public partial class Bootstrap : Control
         EdgeMask.East | EdgeMask.South => "┏",
         EdgeMask.South | EdgeMask.West => "┓",
         EdgeMask.West | EdgeMask.North => "┛",
-        _ => "◆",
+        EdgeMask.North | EdgeMask.East | EdgeMask.West => "┻",
+        EdgeMask.North | EdgeMask.East | EdgeMask.South => "┣",
+        EdgeMask.East | EdgeMask.South | EdgeMask.West => "┳",
+        EdgeMask.South | EdgeMask.West | EdgeMask.North => "┫",
+        EdgeMask.North => "╵",
+        EdgeMask.East => "╶",
+        EdgeMask.South => "╷",
+        EdgeMask.West => "╴",
+        _ => "·",
     };
 
-    private static Button CardButton(CardDefinition card, bool selected)
+    private Button CardButton(CardDefinition card, bool selected, int shortcutIndex)
     {
-        Button button = new() { Text = CardName(card), CustomMinimumSize = new(116, 96), ToggleMode = true, ButtonPressed = selected };
+        string shortcutPrefix = shortcutIndex <= 9 ? $"[{shortcutIndex}] " : string.Empty;
+        Button button = new()
+        {
+            Text = card.Kind == CardKind.Path ? string.Empty : shortcutPrefix + CardName(card),
+            CustomMinimumSize = new(120, 106),
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            ToggleMode = true,
+            ButtonPressed = selected,
+            TooltipText = card.Kind == CardKind.Path
+                ? "Carta de caminho: a miniatura mostra exatamente quais bordas estão abertas."
+                : CardName(card).Replace('\n', ' '),
+        };
         button.AddThemeFontSizeOverride("font_size", 12);
         button.AddThemeColorOverride("font_color", new Color("17202a"));
         button.AddThemeStyleboxOverride("normal", RoundedStyle(new Color("c9aa70"), 8));
         button.AddThemeStyleboxOverride("hover", RoundedStyle(new Color("e0c58d"), 8));
         button.AddThemeStyleboxOverride("pressed", RoundedStyle(new Color("68d4a3"), 8));
+        button.Resized += () => button.PivotOffset = button.Size / 2.0f;
+        button.MouseEntered += () =>
+        {
+            button.ZIndex = 20;
+            button.Scale = new Vector2(1.1f, 1.1f);
+        };
+        button.MouseExited += () =>
+        {
+            button.Scale = Vector2.One;
+            button.ZIndex = 0;
+        };
+        if (shortcutIndex <= 9)
+        {
+            button.Shortcut = new Shortcut
+            {
+                Events = new Godot.Collections.Array
+                {
+                    new InputEventKey { Keycode = Key.Key1 + (shortcutIndex - 1) },
+                },
+            };
+        }
+
+        if (card.Kind == CardKind.Path)
+        {
+            VBoxContainer content = VBox(1);
+            content.MouseFilter = MouseFilterEnum.Ignore;
+            content.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+            content.OffsetLeft = 8;
+            content.OffsetTop = 8;
+            content.OffsetRight = -8;
+            content.OffsetBottom = -8;
+            Label title = LabelText(shortcutPrefix + "CAMINHO", 11, new Color("17202a"));
+            title.HorizontalAlignment = HorizontalAlignment.Center;
+            title.MouseFilter = MouseFilterEnum.Ignore;
+            content.AddChild(title);
+            content.AddChild(new PathCardPreview
+            {
+                Edges = card.Edges,
+                HighContrast = _preferences.HighContrast,
+                SizeFlagsVertical = SizeFlags.ExpandFill,
+            });
+            button.AddChild(content);
+        }
+
+        button.Pressed += () => _audio?.PlayClick();
         return button;
     }
 
@@ -872,7 +1099,7 @@ public partial class Bootstrap : Control
         return panel;
     }
 
-    private static Button PrimaryButton(string text)
+    private Button PrimaryButton(string text)
     {
         Button button = new() { Text = text, CustomMinimumSize = new(0, 42) };
         button.AddThemeFontSizeOverride("font_size", 13);
@@ -880,6 +1107,7 @@ public partial class Bootstrap : Control
         button.AddThemeStyleboxOverride("normal", RoundedStyle(new Color("e2b84b"), 7));
         button.AddThemeStyleboxOverride("hover", RoundedStyle(new Color("f1cd68"), 7));
         button.AddThemeStyleboxOverride("pressed", RoundedStyle(new Color("c89a31"), 7));
+        button.Pressed += () => _audio?.PlayClick();
         return button;
     }
 
@@ -891,6 +1119,7 @@ public partial class Bootstrap : Control
         button.AddThemeStyleboxOverride("normal", RoundedStyle(new Color("263442"), 7));
         button.AddThemeStyleboxOverride("hover", RoundedStyle(new Color("35485a"), 7));
         button.AddThemeStyleboxOverride("pressed", RoundedStyle(new Color("1c2834"), 7));
+        button.Pressed += () => _audio?.PlayClick();
         return button;
     }
 
@@ -937,6 +1166,11 @@ public partial class Bootstrap : Control
         SizeFlagsVertical = expand ? SizeFlags.ExpandFill : SizeFlags.Fill,
     };
 
+    private static Control FixedSpace(float width, float height = 0) => new()
+    {
+        CustomMinimumSize = new Vector2(width, height),
+    };
+
     private static ColorRect FullBackground(Color color)
     {
         ColorRect background = new() { Color = color, MouseFilter = MouseFilterEnum.Ignore };
@@ -949,7 +1183,7 @@ public partial class Bootstrap : Control
         _overlay = null;
         foreach (Node child in GetChildren())
         {
-            if (child == _online)
+            if (child == _online || child == _audio)
             {
                 continue;
             }

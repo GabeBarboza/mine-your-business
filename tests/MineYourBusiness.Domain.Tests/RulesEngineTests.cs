@@ -130,6 +130,72 @@ public sealed class RulesEngineTests
     }
 
     [Fact]
+    public void PlayerStillFullyBrokenAfterActionIsEliminatedFromRound()
+    {
+        GameState game = CreateGame();
+        foreach (PlayerState player in game.Players)
+        {
+            player.Role = PlayerRole.Miner;
+        }
+
+        PlayerState actor = game.CurrentPlayer;
+        actor.BrokenTools = ToolType.All;
+        CardDefinition discard = actor.Hand[0];
+
+        CommandResult result = RulesEngine.Handle(game, new DiscardCommand(actor.Id, discard.Id));
+
+        Assert.True(result.Accepted);
+        Assert.True(actor.IsEliminated);
+        Assert.Empty(actor.Hand);
+        Assert.Contains(result.Events, item => item is PlayerEliminated eliminated && eliminated.PlayerId == actor.Id);
+        Assert.NotEqual(actor.Id, game.CurrentPlayer.Id);
+    }
+
+    [Fact]
+    public void RepairingOneToolPreventsElimination()
+    {
+        GameState game = CreateGame();
+        PlayerState actor = game.CurrentPlayer;
+        CardDefinition repair = new(new("self-repair"), CardKind.RepairTool, Tools: ToolType.Lamp);
+        actor.Hand.Clear();
+        actor.Hand.Add(repair);
+        actor.BrokenTools = ToolType.All;
+
+        CommandResult result = RulesEngine.Handle(
+            game,
+            new RepairToolCommand(actor.Id, repair.Id, actor.Id, ToolType.Lamp));
+
+        Assert.True(result.Accepted);
+        Assert.False(actor.IsEliminated);
+        Assert.Equal(ToolType.Cart | ToolType.Pickaxe, actor.BrokenTools);
+        Assert.DoesNotContain(result.Events, item => item is PlayerEliminated);
+    }
+
+    [Fact]
+    public void SaboteursEndRoundWhenTheyMatchRemainingMiners()
+    {
+        GameState game = CreateGame();
+        game.Players[0].Role = PlayerRole.Miner;
+        game.Players[1].Role = PlayerRole.Miner;
+        game.Players[2].Role = PlayerRole.Saboteur;
+        PlayerState actor = game.CurrentPlayer;
+        actor.BrokenTools = ToolType.All;
+        CardDefinition discard = actor.Hand[0];
+
+        CommandResult result = RulesEngine.Handle(game, new DiscardCommand(actor.Id, discard.Id));
+
+        Assert.True(result.Accepted);
+        Assert.Contains(result.Events, item => item is SaboteursDominated
+        {
+            SaboteursRemaining: 1,
+            MinersRemaining: 1,
+        });
+        Assert.Contains(result.Events, item => item is RoundEnded { RoundNumber: 1 });
+        Assert.Contains(result.Events, item => item is GoldAwarded awarded &&
+            awarded.PlayerId == game.Players[2].Id && awarded.Amount == 5);
+    }
+
+    [Fact]
     public void TextPolicyCompletesThreeRoundsDeterministically()
     {
         GameState first = RunDiscardSimulation(3, 1234, out IReadOnlyList<GameEvent> firstEvents);

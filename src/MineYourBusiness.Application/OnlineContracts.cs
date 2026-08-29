@@ -38,6 +38,7 @@ public sealed record RoomPlayerView(
     bool IsConnected,
     int CardCount,
     ToolType BrokenTools,
+    bool IsEliminated,
     PlayerRole? RevealedRole,
     int? RevealedGold);
 
